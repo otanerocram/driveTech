@@ -1,32 +1,90 @@
-import Pool from './database';
+import { api, app } from './connection/secure';
+import { pool } from './database/connection';
+import {
+    IPacketToSend,
+    IResponse,
+    IResponseFail,
+    IResponseSuccess,
+    IUpdateSql,
+} from './model/interfaces';
+import axios from 'axios';
 
-Pool.query(
-    'SELECT * FROM `Device` WHERE `accountID` = "autosc"',
-    function (err, results, fields) {
-        console.log('results', results); // results contains rows returned by server
-        // console.log('fields', fields); // fields contains extra meta data about results, if available
-    },
-);
+const getTracks = new Promise((resolve) => {
+    pool.query(app.sqlQuery, (err, results) => {
+        if (err) {
+            resolve({
+                success: false,
+                data: err,
+            });
+        } else {
+            resolve({
+                success: true,
+                data: results,
+            });
+        }
+    });
+});
 
-// async function main() {
-//     const connection = await MySQL.createConnection({
-//         host: 'flotaprosegur.com',
-//         user: 'gts',
-//         password: 'YWd1aWxhZmxvdGFwcm9zZWd1cg==',
-//         database: 'gtsss',
-//         port: 2534,
-//     });
+getTracks.then((results) => {
+    const { success } = results as IResponse;
 
-//     const [rows] = await connection.execute(
-//         'SELECT * FROM `Device` WHERE `accountID` = "autosc" limit 2',
-//     );
+    if (!success) {
+        const { data } = results as IResponseFail;
+        console.log(data?.sql);
+        return;
+    }
 
-//     console.log('The solution is: ', rows);
+    const { data } = results as IResponseSuccess;
 
-//     // close the connection
-//     connection.end();
-// }
+    const tracks = [] as Array<IPacketToSend>;
+    const ids = [] as Array<number>;
 
-// main().catch((error) => {
-//     console.error('err', error);
-// });
+    data?.forEach((item) => {
+        const track = {
+            plate: item.vehiculoId,
+            buff: false,
+            datetime: item.gpsDateTime + 'Z',
+            latitude: item.latitud,
+            longitude: item.longitud,
+            speed: item.velocidad,
+            azimuth: item.rumbo,
+            state: 'Idling',
+            event: {
+                type: 'GPS',
+            },
+            ign_input: Boolean(item.ignition),
+            odometer: item.odometro,
+        } as IPacketToSend;
+        tracks.push(track);
+        ids.push(item.posicionId);
+    });
+
+    console.log('Tracks sent', tracks);
+
+    const { hostname, path, headers, method } = api;
+    const url = `https://${hostname}${path}`;
+
+    axios({
+        url,
+        method,
+        headers,
+        data: JSON.stringify(tracks),
+    })
+        .then((res) => {
+            if (res.status === 200) {
+                console.log('Api Response ->', res.data);
+
+                const sql = `${app.sqlUpdate} IN (${ids.join(',')})`;
+
+                pool.query(sql, (err, results) => {
+                    const { info } = results as IUpdateSql;
+                    console.log(info, ids);
+                });
+            } else {
+                console.log('Error', res);
+            }
+        })
+        .catch((err) => {
+            console.log(err.response.data);
+        });
+});
