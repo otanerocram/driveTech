@@ -112,7 +112,7 @@ const mainLoop = () => {
 function resetTimer() {
     setTimeout(() => {
         mainLoop();
-    }, 10000);
+    }, 60000);
 }
 
 mainLoop();
