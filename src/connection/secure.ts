@@ -24,6 +24,6 @@ export const api = {
 
 export const app = {
     sqlQuery:
-        'SELECT posicionId, vehiculoId,velocidad,satelites,rumbo,latitud,longitud,altitud,gpsDateTime,statusCode,ignition,odometro,horometro,nivelBateria,estado FROM `DriveTech` WHERE `estado` = "Nuevo" limit 50',
+        'SELECT posicionId, vehiculoId,velocidad,satelites,rumbo,latitud,longitud,altitud,gpsDateTime,statusCode,ignition,odometro,horometro,nivelBateria,estado FROM `DriveTech` WHERE `estado` = "Nuevo" order by posicionId ASC limit 100',
     sqlUpdate: 'UPDATE `DriveTech` SET `estado` = "Enviado" WHERE `posicionId`',
 };

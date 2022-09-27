@@ -1,5 +1,5 @@
 import { api, app } from './connection/secure';
-import { pool } from './database/connection';
+import { connection } from './database/connection';
 import {
     IPacketToSend,
     IResponse,
@@ -8,25 +8,36 @@ import {
     IUpdateSql,
 } from './model/interfaces';
 import axios from 'axios';
+import fs from 'fs';
+import util from 'util';
+import { json } from 'node:stream/consumers';
 
-const getTracks = new Promise((resolve) => {
-    pool.query(app.sqlQuery, (err, results) => {
-        if (err) {
-            resolve({
-                success: false,
-                data: err,
-            });
-        } else {
-            resolve({
-                success: true,
-                data: results,
-            });
-        }
-    });
-});
+const logFile = fs.createWriteStream('dataSent.json', { flags: 'a' });
+const responsesFile = fs.createWriteStream('responses.json', { flags: 'a' });
+
+const tracks = [] as Array<IPacketToSend>;
+const ids = [] as Array<number>;
 
 const mainLoop = () => {
-    getTracks.then((results) => {
+    tracks.length = 0;
+    ids.length = 0;
+    new Promise((resolve) => {
+        connection.query(app.sqlQuery, (err, results) => {
+            logFile.write(util.format(json, JSON.stringify(results)));
+
+            if (err) {
+                resolve({
+                    success: false,
+                    data: err,
+                });
+            } else {
+                resolve({
+                    success: true,
+                    data: results,
+                });
+            }
+        });
+    }).then((results) => {
         const { success } = results as IResponse;
 
         if (!success) {
@@ -36,9 +47,6 @@ const mainLoop = () => {
         }
 
         const { data } = results as IResponseSuccess;
-
-        const tracks = [] as Array<IPacketToSend>;
-        const ids = [] as Array<number>;
 
         data?.forEach((item) => {
             const track = {
@@ -60,8 +68,6 @@ const mainLoop = () => {
             ids.push(item.posicionId);
         });
 
-        console.log('Tracks sent', tracks);
-
         const { hostname, path, headers, method } = api;
         const url = `https://${hostname}${path}`;
 
@@ -74,23 +80,33 @@ const mainLoop = () => {
             .then((res) => {
                 if (res.status === 200) {
                     console.log('Api Response ->', res.data);
+                    responsesFile.write(
+                        util.format(json, JSON.stringify(res.data)),
+                    );
 
                     const sql = `${app.sqlUpdate} IN (${ids.join(',')})`;
 
-                    pool.query(sql, (err, results) => {
+                    connection.query(sql, (err, results) => {
                         const { info } = results as IUpdateSql;
                         console.log(info, ids);
+                        resetTimer();
                     });
                 } else {
                     console.log('Error', res);
+                    resetTimer();
                 }
             })
             .catch((err) => {
                 console.log(err.response.data);
+                resetTimer();
             });
     });
 };
 
-mainLoop();
+function resetTimer() {
+    setTimeout(() => {
+        mainLoop();
+    }, 10000);
+}
 
-const interval = setInterval(mainLoop, 10000);
+mainLoop();
