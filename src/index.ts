@@ -48,6 +48,12 @@ const mainLoop = () => {
 
         const { data } = results as IResponseSuccess;
 
+        if (data?.length === 0) {
+            console.log('No hay datos nuevos');
+            resetTimer();
+            return;
+        }
+
         data?.forEach((item) => {
             const track = {
                 plate: item.vehiculoId,
